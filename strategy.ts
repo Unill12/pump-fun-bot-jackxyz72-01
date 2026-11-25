@@ -165,12 +165,21 @@ export function createBot(t: Tuning = TUNING): Bot {
   function ingest(batch: Batch): void {
     for (const e of batch.events) {
       if (e.event === 'CreateEvent') {
+        // A curve with no usable create reserves has no floor to measure
+        // against: floorQ / floorT would be NaN or Infinity and every
+        // runup/multiple check downstream would silently misfire. The dev
+        // dataset is well-formed, so this never triggers there; it guards
+        // the final window's different 24h dataset against a malformed
+        // create event instead of letting one bad coin poison the run.
+        const fq = Number(e.virtual_quote_reserves);
+        const ft = Number(e.virtual_token_reserves);
+        if (!Number.isFinite(fq) || !Number.isFinite(ft) || fq <= 0 || ft <= 0) continue;
         coins.set(e.mint, {
           mint: e.mint,
           creator: e.creator,
           bornSlot: e.slot,
-          floorQ: Number(e.virtual_quote_reserves),
-          floorT: Number(e.virtual_token_reserves),
+          floorQ: fq,
+          floorT: ft,
           devBuySol: 0,
           devDumped: false,
           trades: 0,
